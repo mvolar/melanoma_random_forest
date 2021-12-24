@@ -1,0 +1,943 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+
+j
+txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
+setwd("C:/Users/Visitor/Desktop/DIPLOMSKI/")
+load("hg19.1Mb.ranges.Polak.Nature2015.Rdata")
+
+super.enchancer.gr <- makeGRangesFromDataFrame(fread("Sample_02_180_SE.csv"),
+                         keep.extra.columns=F,
+                         ignore.strand=T,
+                         seqinfo=NULL,
+                         seqnames.field=c("seqnames", "seqname",
+                                          "chromosome", "chrom",
+                                          "chr", "chromosome_name",
+                                          "seqid"),
+                         start.field="start",
+                         end.field=c("end", "stop"),
+                         strand.field="strand",
+                         starts.in.df.are.0based=FALSE)
+
+#driverloading
+
+protein.coding.dt <- as.data.table(fread("protein-coding.csv"))
+nonprotein.coding.dt <- as.data.table(fread("nonprotein-coding.csv"))
+library(biomaRt)
+ensembl = useMart("ensembl",dataset="hsapiens_gene_ensembl")
+library(cowplot)
+GR <- transcripts(txdb)
+```
+
+
+```{r}
+names(mutations) <- c("interval",1:107)
+mutations1 <- as.data.table(mutations)
+
+rownames(mutations) <- mutations$interval
+        mutations$interval <- NULL
+
+pcmx <- t(mutations)
+  conts <- PCA(pcmx,graph=F)
+      scree.plot.resp <- fviz_eig(conts, addlabels = F, ylim = c(0, 90)) + labs(title="") + ylab("% variance explained") +theme_minimal(base_size=20)#most of the data can be explained in one dimension
+
+```
+
+```{r}
+
+
+var <- get_pca_var(conts)
+            cont.plot.resp <- fviz_contrib(conts, choice = "var", axes = 1, top = 2000,color="khaki") +theme_minimal(base_size=20) +theme(axis.text.x = element_blank()) + xlab("Regions of the genome")+ scale_color_viridis(discrete=F,option="cividis") + labs(title = "")#plotani po veličini kontribucije
+  
+              kromosomes <- str_extract(rownames(mutations),"chr\\d+")          
+            
+contdt <- conts$var$contrib %>% as.data.table()
+      contdt[,pos:=rownames(mutations)]
+        contdt[,krom := kromosomes]
+```
+
+
+
+```{r}
+  
+PCAdims <- conts$var$coord %>% as.data.table(.) 
+        prcloading <- data.table(PCAdims[,1],PCAdims[,2],contdt[,pos],kromosomes)
+         
+
+primevector <- contdt[order(-Dim.1,-Dim.2)][40:340,][,pos]
+ggplot(prcloading,aes(x=Dim.1,y=Dim.2)) + geom_point(size=1.2) + labs(title = "normalni loading PC1/PC2 biplot")
+contdt
+ prcloading[V3%in%primevector, tp250 := "top 250"]
+    prcloading[!(V3%in%primevector), tp250 := "not"]
+    prcloading[,contributions := contdt[,Dim.1]]
+    biplot.resp <-  ggplot(prcloading,aes(x=Dim.1,y=Dim.2,color=contributions)) + geom_point(size=1.5,alpha=1) + scale_color_viridis(discrete=F,option="cividis") +theme_minimal(base_size=20)  + xlab("PC1")+ ylab("PC2") + labs(color = "Contributions")#top250 KONTRIBUCIJA PC1/PC2 plot
+         
+          
+  
+
+```
+
+#PCA prediktora
+```{r}
+models1 <- models[Final=="Melanocyte 03", c(1:9,17)] 
+PCA.pred.mx <- as.matrix(models1[Final=="Melanocyte 03",c(2:9)])
+
+pred.pcmx <- t(PCA.pred.mx)
+  conts.pred <- PCA(pred.pcmx,graph=F)
+      scree.plot.preds <- fviz_eig(conts.pred, addlabels = F, ylim = c(0, 90)) + ylab("% variance explained")+ labs(title="") +theme_minimal(base_size=20)
+         cont.plot.preds <- fviz_contrib(conts.pred, choice = "var", axes = 1, top = 2000,color="khaki") +theme_minimal(base_size=20) +theme(axis.text.x = element_blank()) + xlab("Regions of the genome")+ scale_color_viridis(discrete=F,option="cividis") + labs(title = "")
+         contdt.pred <- conts.pred$var$contrib %>% as.data.table()
+      contdt.pred[,pos:=contdt[,pos]]
+        contdt.pred[,krom := kromosomes]
+         
+         
+PCAdims.pred <- conts.pred$var$coord %>% as.data.table(.) 
+        prcloading.pred <- data.table(PCAdims.pred[,1],PCAdims.pred[,2],contdt[,pos],kromosomes)
+primevector <- contdt[order(-Dim.1,-Dim.2)][40:340,][,pos]
+
+ prcloading.pred[V3%in%primevector, tp250 := "top 250"]
+    prcloading.pred[!(V3%in%primevector), tp250 := "not"]
+    prcloading.pred[,contributions := contdt.pred[,Dim.1]]
+    biplot.pred <-  ggplot(prcloading.pred,aes(x=Dim.1,y=Dim.2,color=contributions))+ geom_point(size=1.5,alpha=1) + scale_color_viridis(discrete=F,option="cividis") + theme_minimal()  + xlab("PC1")+ ylab("PC2") + labs(color="Contributions") +theme_minimal(base_size=20)
+     
+    
+    
+    
+
+comp2 <- contdt.pred[order(-Dim.1,-Dim.2)][,pos]
+comp1 <- contdt[order(-Dim.1,-Dim.2)][,pos]
+length(comptotal)
+comptotal <- c(comp1,comp2)
+comparison.pos <- as.matrix(stringDist(comptotal)) 
+
+shrunk.dt <- melt(comparison.pos) %>% as.data.table(.)
+shrunk.dt1 <- shrunk.dt[value==0][Var1!=Var2]
+shrunk.dt1[1:2128,Var1:=Var1-2128][,Var2:=Var2/2]
+posvpos.plot <- ggplot(data = shrunk.dt1, aes (x=Var1,y=Var2)) + geom_point(alpha = 0.6) + xlab("Predictor positions") + ylab("Response  positions")   +theme_minimal(base_size=20)#best points potentialy
+
+
+
+
+
+
+cow <- plot_grid(biplot.resp,biplot.pred, labels = c("AUTO"),label_size = 8)
+
+
+```
+
+#cowplots
+
+```{r}
+plot_grid(scree.plot.resp,scree.plot.preds,cont.plot.resp,cont.plot.preds, labels = c('A','B',"C","D"), label_size = 16)
+```
+
+
+
+
+
+```{r}
+#i top 500 i varijance, koliko ih je iz top 500 visoko/malovarijablinim područjima
+
+mat <- as.matrix(mutations)
+
+A1 = mat/apply(mat,1,max) #standard po maxu
+
+varkomp <- as.data.table(A1)
+
+varkomp[, variance := rowVars(as.matrix(.SD))]
+      varkomp[,varmax :=  max(variance)]
+          varkomp[,cut := cut(variance,quantile(variance,seq(0,1,0.33)))]
+            varkomp[,grp:=.GRP,by=cut]
+                  varkomp[,positions:=rownames(mutations)]
+                  
+phv <- varkomp[grp==1,positions] # positions high variance                
+  plv <- varkomp[grp==3,positions] #postions low variance
+```
+
+ H3K4me1, H3K4me3, H3K27ac, H9K9me3 i H3K36me3
+
+```{r}
+
+
+wdepgn <- epigenome %>%
+  pivot_wider(names_from = modification, values_from = value)
+
+
+roadmap1 <- rename(roadmap,replace = c("NEW.EID" = "celltype"))
+models<- left_join(wdepgn,roadmap1,by="celltype") %>% as.data.table (.) %>% .[,celltype:=NULL] #spajanje tablica
+
+
+unique(models[,Final])
+  
+
+models1 <- models[Final=="Melanocyte 03", c("interval","H3K4me1", "H3K4me3", "H3K9me3","H3K36me3","Final")] 
+mutations1<- as.data.table(mutations)
+          mutations1[, sum := rowSums(.SD, na.rm=T)/107, .SDcols=c(2:108)][,interval:= as.character(interval)]
+                models1[,interval:=as.character(interval)][order(interval),exp:=mutations1[order(interval),sum]] #uzimam melanocite 03
+
+ranger(data=models1[,-c("interval", "Final")], formula = exp~.,importance = "impurity",num.trees = 1000) #model radi, OOB r^2 cca 0.78
+
+
+```
+
+
+
+
+
+
+
+
+za svako tkivo napraviti metriku razlike određene regije i punog modela u MSE 
+
+
+```{r}
+tissvec <- unique(models[,Final])
+```
+
+
+#CV testing of models
+
+
+```{r}
+mutations <- as.data.table(mutations)
+primevector <- contdt[order(-Dim.1,-Dim.2)][750:991,][,pos]
+diffs.full <- c()
+diffs.partial <- c()
+
+starts <- seq (from=1, to = 107,by = 9)
+for (i in 1:length(starts))
+{  
+CV.sample <- seq(from=starts[i]+1,to=starts[i]+8)
+      
+      
+mutations.train <- mutations[,-..CV.sample]
+
+vec <- !colnames(mutations)%in%colnames(mutations.train)
+        vec[1]<- TRUE
+        
+ mutations.test <- mutations[,..vec]
+mutations.train[, sum := rowSums(.SD, na.rm=T)/99, .SDcols=c(2:ncol(mutations.train))][,interval:= as.character(interval)]
+    mutations.test[, sum := rowSums(.SD, na.rm=T)/9, .SDcols=c(2:ncol(mutations.test))][,interval:= as.character(interval)]      
+
+models.train<- models1      
+      models.test <- models1    
+          models.train[,interval:=as.character(interval)][order(interval),exp:=mutations.train[order(interval),sum]]
+              models.test[,interval:=as.character(interval)][order(interval),exp:=mutations.test[order(interval),sum]]
+        
+      #uspotavljen training set      
+      
+      
+      #uspostavljamo ful data point fitanje
+      
+
+full.model <- ranger(data=models.train[,-c("interval", "Final")], formula = exp~.,num.trees = 500) 
+          preds <- predict(full.model,data = models.test[,-c("interval", "Final","exp")]) %>%                                                                                                                      .$predictions
+      
+  diffs.full<- c(diffs.full,sqrt(sum((preds-models.test[,exp])^2)))
+      
+      
+      
+            
+primevector <- contdt[order(-Dim.1,-Dim.2)][750:991,][,pos]
+
+  part.model <- ranger(data=models.train[interval%in%primevector,-c("interval", "Final")], formula = exp~.,num.trees = 500) 
+                        preds.best <- predict(part.model,data = models.test[,-c("interval", "Final","exp")]) %>%                                                                                                                .$predictions
+  diffs.partial <- c(diffs.partial,sqrt(sum((preds.best-models.test[,exp])^2)))
+
+}                        
+
+
+dt <- data.table(diffs.full,diffs.partial,1:12)
+ggplot() + geom_point(data=dt, aes(x=diffs.partial,y=diffs.full,color=V3))
+
+ggplot() + geom_line(data=dt, aes(x=V3,y=diffs.full,color="full"))  + geom_line(data=dt, aes(x=V3,y=diffs.partial,color="partial"))
+```
+
+#size selection
+
+```{r}
+mutations <- as.data.table(mutations)
+tiss.rnd.plot.vec <- c()
+size.selection.dt <- data.table()
+
+replace.vector <- c(1:46,48:50,52:83)
+val.tiss.vec <- c()
+rnd.tissvec <- c(47,51,sample(replace.vector,10))
+
+             tissvec[47]=="Melanocyte 03" #47
+tissvec[51]=="Melanocyte 01"
+
+for (z in rnd.tissvec)
+{
+  assesory.plot.dt <- data.table()
+
+  models1 <- models[Final==tissvec[z], c("interval","H3K4me1", "H3K4me3", "H3K9me3","H3K36me3","Final")] [1:2128,]
+             models1[,interval:=as.character(interval)]
+             
+             starts <- seq (from=1, to = 107,by = 9)
+for (j in 1:212)
+{
+  tiss.sel.plot <- c()
+  
+              for (i in 1:2)
+{  
+
+   CV.sample <- seq(from=starts[i]+1,to=starts[i]+8)
+      
+      
+mutations.train <- mutations[,-..CV.sample]
+
+vec <- !colnames(mutations)%in%colnames(mutations.train)
+        vec[1]<- TRUE
+        
+ mutations.test <- mutations[,..vec]
+mutations.train[, sum := rowSums(.SD, na.rm=T)/99, .SDcols=c(2:ncol(mutations.train))][,interval:= as.character(interval)]
+    mutations.test[, sum := rowSums(.SD, na.rm=T)/9, .SDcols=c(2:ncol(mutations.test))][,interval:= as.character(interval)]      
+
+models.train<- models1      
+      models.test <- models1    
+          models.train[,interval:=as.character(interval)][order(interval),exp:=mutations.train[order(interval),sum]]
+              models.test[,interval:=as.character(interval)][order(interval),exp:=mutations.test[order(interval),sum]]
+              
+    
+
+
+  primevector <- contdt[sample(1:2128,j*10),][,pos]
+
+  part.model <- ranger(data=models.train[interval%in%primevector,-c("interval", "Final")], formula = exp~.,num.trees = 500) 
+                        preds.best <- predict(part.model,data = models.test[,-c("interval", "Final","exp")]) %>%                                                                                                                .$predictions
+  tiss.sel.plot<- c(tiss.sel.plot, sqrt(sum((preds.best-models.test[,exp])^2)))
+   
+}
+              tiss.rnd.plot.vec[j] <- mean(tiss.sel.plot)
+}
+           assesory.plot.dt <- data.table(values.tiss = tiss.rnd.plot.vec, size = seq(from = 1, to = 2120,by=10),rep(tissvec[z],212))  
+             size.selection.dt <- rbind(size.selection.dt,assesory.plot.dt)
+             val.tiss.vec <- c(val.tiss.vec,tiss.rnd.plot.vec)
+             
+}
+      
+ggplot() + geom_line(data=size.selection.dt, aes(x=size,y=values.tiss,color=V3)) + scale_color_viridis(discrete=T,option = "viridis") + ylab("MSE") + xlab("Number of regions used") + theme_minimal()+ theme(legend.position="none") 
+```
+
+#accuracy of best fitted regions 
+```{r}
+
+diff <- c()
+wilcox.testing.diff.dt <- data.table()
+
+for ( i in 1:83)
+{
+  models1 <- models[Final==tissvec[i], c("interval","H3K4me1", "H3K4me3", "H3K9me3","H3K36me3","Final")] [1:2128,]
+             models1[,interval:=as.character(interval)]
+             
+
+diffs.full <- c()
+diffs.partial <- c()
+
+starts <- seq (from=1, to = 107,by = 9)
+for (j in 1:length(starts))
+{  
+CV.sample <- seq(from=starts[j]+1,to=starts[j]+8)
+      
+      
+mutations.train <- mutations[,-..CV.sample]
+
+vec <- !colnames(mutations)%in%colnames(mutations.train)
+        vec[1]<- TRUE
+        
+ mutations.test <- mutations[,..vec]
+mutations.train[, sum := rowSums(.SD, na.rm=T)/99, .SDcols=c(2:ncol(mutations.train))][,interval:= as.character(interval)]
+    mutations.test[, sum := rowSums(.SD, na.rm=T)/9, .SDcols=c(2:ncol(mutations.test))][,interval:= as.character(interval)]      
+
+models.train<- models1      
+      models.test <- models1    
+          models.train[,interval:=as.character(interval)][order(interval),exp:=mutations.train[order(interval),sum]]
+              models.test[,interval:=as.character(interval)][order(interval),exp:=mutations.test[order(interval),sum]]
+     
+            
+primevector <- contdt[order(-Dim.1,-Dim.2)][70:270,][,pos]
+
+  part.model <- ranger(data=models.train[interval%in%primevector,-c("interval", "Final")], formula = exp~.,num.trees = 500) 
+                        preds.best <- predict(part.model,data = models.test[,-c("interval", "Final","exp")]) %>%                                                                                                                .$predictions
+  diffs.partial <- c(diffs.partial,sqrt(sum((preds.best-models.test[,exp])^2)))
+
+  
+  
+  
+}
+    diff <- c(diff,mean((diffs.partial))/12)
+    wilcox.testing.diff.dt <- rbind(wilcox.testing.diff.dt,cbind(diffs.partial,rep(tissvec[i],12)))
+}
+
+srot1 <- data.table( diff,tiss = tissvec[1:83])
+
+wilcox.testing.diff.dt[,diffs.partial:= as.numeric(diffs.partial)]
+
+wtpartial <- round(wilcox.test (x = wilcox.testing.diff.dt[V2=="Melanocyte 03" |  V2=="Melanocyte 01", diffs.partial], mu=mean(wilcox.testing.diff.dt[V2!="Melanocyte 03" &  V2!="Melanocyte 01",diffs.partial]))$p.value,6)
+wtfull
+srot1[,coloring:= as.factor(1:83)]
+tiss.diff.plot1 <- ggplot(data=srot1[1:83], aes(x=reorder(tiss,diff), y=diff*12,fill=coloring))+ theme_minimal(base_size = 18) +geom_bar(stat="identity") + theme(axis.text.x = element_text(angle = 90, hjust = 1))  +theme(axis.title.x = element_blank(),    legend.position="none") +scale_fill_viridis(discrete = TRUE,option = "viridis") + ylab("MSE of selected regions model fit") + annotate(geom="text", x=25, y=900, label= paste0("Wilcox test p-value=",wtfull),color="black",size = 12) 
+
+
+
+```
+
+
+
+
+#accuracy of full models
+
+
+```{r}
+diff1 <- c()
+wilcox.testing.diff.full.dt <- data.table()
+
+for ( i in 1:83)
+{
+  models1 <- models[Final==tissvec[i], c("interval","H3K4me1", "H3K4me3", "H3K9me3","H3K36me3","Final")] [1:2128,]
+             models1[,interval:=as.character(interval)]
+             
+
+diffs.full <- c()
+diffs.partial <- c()
+
+starts <- seq (from=1, to = 107,by = 9)
+for (j in 1:length(starts))
+{  
+CV.sample <- seq(from=starts[j]+1,to=starts[j]+8)
+      
+      
+mutations.train <- mutations[,-..CV.sample]
+
+vec <- !colnames(mutations)%in%colnames(mutations.train)
+        vec[1]<- TRUE
+        
+ mutations.test <- mutations[,..vec]
+mutations.train[, sum := rowSums(.SD, na.rm=T)/99, .SDcols=c(2:ncol(mutations.train))][,interval:= as.character(interval)]
+    mutations.test[, sum := rowSums(.SD, na.rm=T)/9, .SDcols=c(2:ncol(mutations.test))][,interval:= as.character(interval)]      
+
+models.train<- models1      
+      models.test <- models1    
+          models.train[,interval:=as.character(interval)][order(interval),exp:=mutations.train[order(interval),sum]]
+              models.test[,interval:=as.character(interval)][order(interval),exp:=mutations.test[order(interval),sum]]
+        
+
+            
+primevector <- contdt[,pos]
+
+  part.model <- ranger(data=models.train[interval%in%primevector,-c("interval", "Final")], formula = exp~.,num.trees = 500) 
+                        preds.best <- predict(part.model,data = models.test[,-c("interval", "Final","exp")]) %>%                                                                                                                .$predictions
+  diffs.partial <- c(diffs.partial,sqrt(sum((preds.best-models.test[,exp])^2)))
+
+  
+  
+  
+}
+    diff1 <- c(diff1,mean(diffs.partial))
+    wilcox.testing.diff.full.dt <- rbind(wilcox.testing.diff.full.dt,cbind(diffs.partial,rep(tissvec[i],12)))
+}
+
+srot2 <- data.table( diff = diff1[1:83],tiss = tissvec[1:83])
+        srot2[,coloring:= as.factor(1:83)]
+
+wilcox.testing.diff.full.dt[,diffs.partial:= as.numeric(diffs.partial)]
+      wtfull <-  round(wilcox.test (x = wilcox.testing.diff.full.dt[V2=="Melanocyte 03" |  V2=="Melanocyte 01", diffs.partial], mu =    mean(wilcox.testing.diff.full.dt[,diffs.partial]))$p.value,6)
+
+tiss.diff.plot2 <- ggplot(data=srot2, aes(x=reorder(tiss,diff1), y=diff1,fill=coloring)) + theme_minimal(base_size = 18) +geom_bar(stat="identity") + theme(axis.text.x = element_text(angle = 90, hjust = 1))  +theme(axis.title.x = element_blank(),    legend.position="none") +scale_fill_viridis(discrete = TRUE,option = "viridis") + ylab("MSE of all regions model fit") + annotate(geom="text", x=25, y=370, label= paste0("Wilcox test p-value=",wtpartial),color="black",size = 12)
+mutations
+```
+
+
+
+
+
+#region selection graph
+```{r}
+panover.dt <- data.table()
+
+
+#rol.sum.tiss <- c()
+
+
+
+for ( z in 1:83)
+{
+
+ models1 <- models[Final==tissvec[z], c("interval","H3K4me1", "H3K4me3", "H3K9me3","H3K36me3","Final")] [1:2128,]
+             models1[,interval:=as.character(interval)]
+
+             
+             starts.out <- seq(from = 1, to = 1928, by=10)
+
+
+for (j in 1:length(starts.out))
+{
+
+
+diffs.partial <- c()
+
+    starts <- seq (from=1, to = 107,by = 9)
+
+        for (i in 1:length(starts))
+        {  
+        CV.sample <- seq(from=starts[i]+1,to=starts[i]+8)
+      
+      
+        mutations.train <- mutations[,-..CV.sample]
+
+        vec <- !colnames(mutations)%in%colnames(mutations.train)
+        vec[1]<- TRUE
+        
+          mutations.test <- mutations[,..vec]
+          mutations.train[, sum := rowSums(.SD, na.rm=T)/99, .SDcols=c(2:ncol(mutations.train))][,interval:= as.character(interval)]
+         mutations.test[, sum := rowSums(.SD, na.rm=T)/9, .SDcols=c(2:ncol(mutations.test))][,interval:= as.character(interval)]      
+
+        models.train<- models1      
+             models.test <- models1    
+                 models.train[,interval:=as.character(interval)][order(interval),exp:=mutations.train[order(interval),sum]]
+                      models.test[,interval:=as.character(interval)][order(interval),exp:=mutations.test[order(interval),sum]]
+        
+      #uspotavljen training set      
+      
+      #uspostavljamo ful data point fitanje
+   
+            
+          primevector <- contdt[order(-Dim.1,-Dim.2)][starts.out[j]:(starts.out[j]+200),][,pos]
+
+         part.model <- ranger(data=models.train[interval%in%primevector,-c("interval", "Final")], formula = exp~.,num.trees = 500) 
+                        preds.best <- predict(part.model,data = models.test[,-c("interval", "Final","exp")]) %>%                                                                                                                .$predictions
+             diffs.partial <- c(diffs.partial,sqrt(sum((preds.best-models.test[,exp])^2)))
+
+} 
+rol.sum.tiss <- c(rol.sum.tiss,mean(diffs.partial))
+
+}
+}             
+             
+             
+             
+             
+#panover.dt[,paste0(tissvec[z]):= roll.sum.tiss]
+
+#}
+
+name.vec <- c()
+for (i in 1:83)
+  
+{
+  
+  name.vec <- c(name.vec,rep (tissvec[i],length(starts.out)))  
+  
+  
+}
+length(starts.out)
+name.vec
+193 *75
+
+length(rol.sum.tiss)
+panover.dt[,values := rol.sum.tiss[1:16019]]
+length(name.vec)
+panover.dt[,names:= name.vec][, wins:= rep(seq(from = 1, to = 1928, by=10), 83)]
+
+ggplot() + geom_line(data = panover.dt[4000:10000], aes(x=wins, y=values,group=names,color=names)) + theme(legend.position = "none")
+
+
+panover.dt.diffs <- panover.dt
+
+
+
+panover.dt.d2 <- panover.dt.diffs %>%  as_tibble(. ) %>% pivot_wider(names_from = names, values_from = values) %>% as.data.table (.)
+
+panover.dt.d1 <- panover.dt.diffs %>%  as_tibble(. ) %>% pivot_wider(names_from = names, values_from = values) %>% as.data.table (.)
+
+
+avg.vec <- panover.dt.d1[,c("Melanocyte 01","Melanocyte 03")][,rowavg := rowMeans(.SD)][,rowavg]
+
+panover.dt.d3 <- panover.dt.d2[,-c("wins","Melanocyte 01","Melanocyte 03")][,sums:=rowMeans(.SD)][,avg.vecs := avg.vec][,diffs := sums-avg.vecs]
+panover.dt.d3[,wins:= panover.dt.d2[,wins]]
+
+ggplot() + geom_line(data = panover.dt.d3, aes(x= wins,y=diffs)) 
+  ggplot() + geom_line(data = panover.dt[1:14000], aes(x=wins, y=values,group=names,color=names)) + theme(legend.position = "none")
+  
+clust.vec <- kmeans(panover.dt.d3[,diffs],3)$cluster
+
+panover.dt.d3[,claster := as.factor(clust.vec)]
+
+ggplot() + geom_point(data = panover.dt.d3, aes(x= wins,y=diffs,color=claster),)
+```
+
+#revisited predictors
+```{r}
+set.seed(1234)
+rol.pred.tiss <-c ()
+replace.vector <- c(1:46,48:50,52:83)
+rnd.tissvec <- c(47,51,sample(replace.vector,30))
+
+             tissvec[47]=="Melanocyte 03" #47
+tissvec[51]=="Melanocyte 01"
+
+
+for ( z in rnd.tissvec)
+{
+
+ models1 <- models[Final==tissvec[z], c("interval","H3K4me1", "H3K4me3", "H3K9me3","H3K36me3","Final")] [1:2128,]
+             models1[,interval:=as.character(interval)]
+
+             
+             starts.out <- seq(from = 1, to = 1928, by=10)
+
+
+for (j in 1:length(starts.out))
+{
+
+
+diffs.partial <- c()
+
+    starts <- seq (from=1, to = 107,by = 9)
+
+        for (i in 1:length(starts))
+        {  
+        CV.sample <- seq(from=starts[i]+1,to=starts[i]+8)
+      
+      
+        mutations.train <- mutations[,-..CV.sample]
+
+        vec <- !colnames(mutations)%in%colnames(mutations.train)
+        vec[1]<- TRUE
+        
+          mutations.test <- mutations[,..vec]
+          mutations.train[, sum := rowSums(.SD, na.rm=T)/99, .SDcols=c(2:ncol(mutations.train))][,interval:= as.character(interval)]
+         mutations.test[, sum := rowSums(.SD, na.rm=T)/9, .SDcols=c(2:ncol(mutations.test))][,interval:= as.character(interval)]      
+
+        models.train<- models1      
+             models.test <- models1    
+                 models.train[,interval:=as.character(interval)][order(interval),exp:=mutations.train[order(interval),sum]]
+                      models.test[,interval:=as.character(interval)][order(interval),exp:=mutations.test[order(interval),sum]]
+        
+      #uspotavljen training set      
+      
+      #uspostavljamo ful data point fitanje
+   
+            
+          primevector <- contdt.pred[order(-Dim.1,-Dim.2)][starts.out[j]:(starts.out[j]+200),][,pos]
+
+         part.model <- ranger(data=models.train[interval%in%primevector,-c("interval", "Final")], formula = exp~.,num.trees = 500) 
+                        preds.best <- predict(part.model,data = models.test[,-c("interval", "Final","exp")]) %>%                                                                                                                .$predictions
+             diffs.partial <- c(diffs.partial,sqrt(sum((preds.best-models.test[,exp])^2)))
+
+} 
+rol.pred.tiss <- c(rol.pred.tiss,mean(diffs.partial))
+
+}
+}             
+             name.vec <- c()
+for (i in rnd.tissvec)
+  
+{
+  
+  name.vec <- c(name.vec,rep (tissvec[i],length(starts.out)))  
+  
+  
+}
+           
+panover.pred.dt <- data.table()
+    panover.pred.dt[,values := rol.pred.tiss]
+            panover.pred.dt[,names:= name.vec][, wins:= rep(seq(from = 1, to = 1928, by=10), 32)]
+
+            line.graph.2 <-  ggplot() + geom_line(data = panover.pred.dt[1:6000], aes(x=wins, y=values,group=names,color=names)) + xlab("Contribution ordered position on list") + ylab("MSE") + scale_color_viridis(discrete= T) + theme_minimal(base_size = 20)  + theme(legend.position = "none")
+              line.graph.1  <- ggplot() + geom_line(data = panover.dt [8000:10400], aes(x=wins, y=values,group=names,color=names)) + xlab("Contribution ordered position on list") + ylab("MSE") + scale_color_viridis(discrete= T)+ theme_minimal(base_size = 20) + theme(legend.position = "none") 
+
+
+panover.pred.d1 <- panover.pred.dt %>%  as_tibble(. ) %>% pivot_wider(names_from = names, values_from = values) %>% as.data.table (.)
+
+
+avg.vec <- panover.pred.d1[,c("Melanocyte 01","Melanocyte 03")][,rowavg := rowMeans(.SD)][,rowavg]
+      set.seed(1234)
+panover.pred.d2<- panover.pred.d1[,-c("wins","Melanocyte 01","Melanocyte 03")][,rowavg:=rowMeans(.SD)][,avg.vecs := avg.vec][,diffs := rowavg-avg.vecs]
+panover.pred.d2[,wins:= panover.dt.d1[,wins]]
+      clust.vec <- kmeans(panover.pred.d2[,diffs],4)
+      panover.pred.d2[,clust:=as.factor(clust.vec$cluster)]
+
+
+diff.graph2 <- ggplot() + geom_line(data = panover.pred.d2, aes(x= wins,y=diffs)) + theme_minimal(base_size = 20) + ylab("Calculated difference") + xlab("Contribution ordered position on list")
+diff.graph1 <- ggplot() + geom_line(data = panover.dt.d3, aes(x= wins,y=diffs)) + theme_minimal(base_size = 20) + ylab("Calculated difference") + xlab("Contribution ordered position on list")
+scale(panover.dt.d3[,diffs])
+(pnorm(-abs(scale(panover.dt.d3[,diffs]))))
+
+mean(panover.pred.d2[,diffs])
+mean(panover.dt.d3[,diffs])
+pnorm(-abs(scale(panover.dt.d3[,diffs])))
+contdt[order(-Dim.1,-Dim.2)][,pos][1:331]
+
+```
+
+
+
+#komparison prediction graph
+
+```{r}
+preds.full.dt <- data.table()
+preds.best.dt <- data.table()
+primevector <- contdt[40:340][,pos]
+
+rsq <- function (x, y) cor(x, y) ^ 2
+
+rsq(preds.combine[,Model.Value],preds.combine[,Real.Value])
+rsq(preds.combine[,Model.Value.partial],preds.combine[,Real.Value])
+
+```
+
+#automated RvsFitted plots
+```{r}
+preds.combine <- data.table ()
+primevector <- contdt[order(-Dim.1,-Dim.2)][40:340][,pos]
+for (j in 1:83)
+{
+preds.full.dt <- data.table()
+preds.best.dt <- data.table()
+models1 <- models[Final==tissvec[j], c("interval","H3K4me1", "H3K4me3", "H3K9me3","H3K36me3","Final")][1:2128,]
+             models1[,interval:=as.character(interval)][order(interval),exp:=mutations1[order(interval),sum]]
+
+for (i in 1:length(starts))
+        {  
+        CV.sample <- seq(from=starts[i]+1,to=starts[i]+8)
+      
+      
+        mutations.train <- mutations[,-..CV.sample]
+
+        vec <- !colnames(mutations)%in%colnames(mutations.train)
+        vec[1]<- TRUE
+        
+          mutations.test <- mutations[,..vec]
+          mutations.train[, sum := rowSums(.SD, na.rm=T)/99, .SDcols=c(2:ncol(mutations.train))][,interval:= as.character(interval)]
+         mutations.test[, sum := rowSums(.SD, na.rm=T)/9, .SDcols=c(2:ncol(mutations.test))][,interval:= as.character(interval)]      
+
+        models.train<- models1      
+             models.test <- models1    
+                 models.train[,interval:=as.character(interval)][order(interval),exp:=mutations.train[order(interval),sum]]
+                      models.test[,interval:=as.character(interval)][order(interval),exp:=mutations.test[order(interval),sum]]
+
+   full.model <- ranger(data=models.train[,-c("interval", "Final")], formula = exp~.,num.trees = 500) 
+                        preds.full <- predict(full.model,data = models.test[,-c("interval", "Final","exp")]) %>%                                                                                                                .$predictions
+            
+preds.full.dt[,paste0(i):= preds.full]
+
+         part.model <- ranger(data=models.train[interval%in%primevector,-c("interval", "Final")], formula = exp~.,num.trees = 500) 
+                        preds.best <- predict(part.model,data = models.test[,-c("interval", "Final","exp")]) %>%                                                                                                                .$predictions
+             
+preds.best.dt[,paste0(i):= preds.best]
+                        
+} 
+             
+             
+                          preds.full.dt[,means:=rowMeans(.SD)][,pos:=models1[,interval]]
+            
+                preds.best.dt[,means:=rowMeans(.SD)][,pos:=models1[,interval]]
+
+
+preds.combine.help <- data.table(Model.Value =preds.full.dt[,means],Region.value=preds.best.dt[,means],Real.Value = models1[,exp],tissue = rep(paste0(tissvec[j]),2128))
+
+preds.combine <- rbind(preds.combine,preds.combine.help)
+
+}
+
+
+plotting.rvsfit <- function (tissues)
+{
+  full.Rsq <- round(rsq(preds.combine[tissue==tissues,Model.Value],preds.combine[tissue==tissues,Real.Value]),3)
+region.Rsq <- round(rsq(preds.combine[tissue==tissues,Region.value],preds.combine[tissue==tissues,Real.Value]),3)
+
+plot.1 <-   ggplot(data = preds.combine[tissue==tissues],aes(x =  Model.Value,y= Real.Value,color="Full Model")) + geom_point( ) +  geom_smooth( method="lm",color="black",se=F)  + scale_colour_manual(values = c("darkgreen", "blue")) + labs(title = paste0(tissues)) + annotate(geom="text", x=25, y=70, label=paste0("R^2=",full.Rsq),color="black") + labs 
+
+plot.2 <- ggplot(data = preds.combine[tissue==tissues],aes(x =  Region.value,y= Real.Value,color="Regions model")) + geom_point( ) +  geom_smooth( method="lm",color="black",se=F)  + scale_colour_manual(values = c("darkred", "blue")) + labs(title = paste0(tissues)) + annotate(geom="text", x=25, y=70, label= paste0("R^2=",region.Rsq),color="black")
+return (list(plot.1, plot.2))
+
+
+  
+}
+  
+
+plotting.rvsfit(tissvec[tissvec=="Melanocyte 03"])
+lapply(tissvec,plotting.rvsfit )
+preds.combine
+
+plotting.rvsfit.region <- function (tissues)
+{
+
+region.Rsq <- round(rsq(preds.combine[tissue==tissues,Region.value],preds.combine[tissue==tissues,Real.Value]),3)
+
+
+plot.2 <- ggplot(data = preds.combine[tissue==tissues],aes(x =  Region.value,y= Real.Value,color="Regions model",alpha=0.8)) + geom_point( ) +  geom_smooth( method="lm",color="black",se=F)  + scale_color_viridis(discrete=T) + labs(title = paste0(tissues)) + annotate(geom="text", x=25, y=70,label= paste0("R^2=",region.Rsq),color="black",size = 8) + theme_minimal(base_size=20) + theme(legend.position="none") + xlab("Fitted value") + ylab("Real value")
+return (list(plot.2))
+
+
+  
+}
+  
+plotting.rvsfit.region("Melanocyte 03")[[1]]
+plotting.rvsfit.region("Melanocyte 01")
+plotting.rvsfit.region("Rectal Mucosa 31")
+plotting.rvsfit.region("Rectal Mucosa 29")
+plotting.rvsfit.region("Psoas Muscle")
+```
+
+
+
+
+
+
+#mutations densities comparison
+```{r}
+#histogram 
+models1 <- models[Final=="Melanocyte 03", c("interval","H3K4me1", "H3K4me3", "H3K9me3","H3K36me3","Final")] 
+             models1[,interval:=as.character(interval)] [order(interval),exp:=mutations1[order(interval),sum]]
+
+ggplot() + geom_histogram(data=models1,aes(x=exp, fill = "red"),bins = 150) + theme (legend.position = "none")
+primevector <- c()
+primevector <- contdt[order(-Dim.1,-Dim.2)][70:270,][,pos]
+
+
+models1[interval%in%primevector,top.regions := "Yes"][!interval%in%primevector,top.regions := "No"]
+
+
+density.plot1 <- ggplot() + geom_density(data=models1,aes(x=exp, fill = top.regions,alpha=0.7),binwidth = 150)  + scale_fill_viridis(discrete=T,option="viridis") + xlab("Number of mutations in a region") + theme_minimal(base_size=20) + theme(legend.position = "none") + ylab("") +  annotate(geom="text", x=100, y=0.021,size=8, label= paste0("Wilcox test p-value=",round(wilcox.test(models1[interval%in%primevector,exp],models1[,exp])$p.value,digits=8)))+ ylab("Relative density") 
+
+
+
+wilcox.test(models1[interval%in%primevector,exp],models1[,exp])
+
+
+```
+#GC content density plots/wilcox test
+```{r}
+
+predictors.dt <- as.data.table(cbind(interval=rownames(predictors),predictors))
+chosen.GCconts <- predictors.dt[interval%in%contdt[order(-Dim.1,-Dim.2)][70:270][,pos],]
+
+
+chosen.GCconts[,GC_content]
+
+density.plot2 <- ggplot() + geom_density(data=chosen.GCconts,aes(x=GC_content,fill="Selected regions"),alpha=0.6) + geom_density(data = predictors.dt, aes (x=GC_content, fill= "All regions"),alpha=0.6 ) + theme_minimal(base_size=20) + scale_fill_viridis(discrete=T,option ="viridis") + xlab("GC content in %" ) + ylab("Relative density") +  annotate(geom="text", x=0.5, y=10,size=8, label= paste0("Wilcox test p-value=",round(wilcox.test(chosen.GCconts[,GC_content],predictors.dt[,GC_content])$p.value , digits= 4))) + theme(legend.position = "none")
+
+```
+
+#GRanges filtering
+```{r}
+names(interval.ranges)
+
+cds.exon.plot <- function (vec.pozicija)
+{
+used.intervals <- interval.ranges[names(interval.ranges)%in%vec.pozicija]
+used.intervals.tot <- interval.ranges[names(interval.ranges)%in%models1[,interval]]
+GR.transcripts <- transcripts(txdb)
+GR.exons <- exons(txdb)
+
+
+
+transcripts.overlaps <- findOverlaps(GR.transcripts,used.intervals)
+  overlapped.transcripts.dt <-           as.data.table(reduce(GR.transcripts[queryHits(transcripts.overlaps)]))
+
+exon.overlaps <- findOverlaps(GR.exons,used.intervals)
+  overlapped.exons.dt <-           as.data.table(reduce(GR.exons[queryHits(exon.overlaps)]))
+  
+transcripts.overlaps.tot <- findOverlaps(GR.transcripts,used.intervals.tot)
+  overlap.tot.transcripts.dt <-           as.data.table(reduce(GR.transcripts[queryHits(transcripts.overlaps.tot)]))
+
+exon.overlaps.tot <- findOverlaps(GR.exons,used.intervals.tot)
+  overlapped.tot.exons.dt <-           as.data.table(reduce(GR.exons[queryHits(exon.overlaps.tot)]))
+  
+
+
+avg.widths <- c(sum(overlapped.transcripts.dt[,width])/(length(vec.pozicija)*10^4),sum(overlapped.exons.dt[,width])/(length(vec.pozicija)*10^4),sum(overlap.tot.transcripts.dt[,width])/(2128*10^4),sum(overlapped.tot.exons.dt[,width])/(2128*10^4))
+
+dt.name.vec <- c("Selected regions transcribed", "Selected regions Exons", "All region transcribed","All region Exons")
+
+cds.exons.width.dt <- data.table(values=avg.widths,facet = c("Transcripts","Exon","Transcripts","Exon"),names=dt.name.vec)  
+  
+  
+return(list(ggplot(data=cds.exons.width.dt, aes(x=names, y=values,fill=names),colour="white") +geom_bar(stat="identity") + theme_minimal(base_size=20)+facet_wrap(~facet,scales="free_x") + scale_fill_viridis(discrete=T,option="viridis") + theme(axis.text.x = element_blank()) + xlab("")+ ylab("% of Transcript/Exon covered Mb regions") + labs(fill=""),cds.exons.width.dt))
+}
+
+genomic.plots1 <- cds.exon.plot(contdt[order(-Dim.1,-Dim.2)][70:270][,pos])
+
+```
+#super enchancer part
+```{r}
+
+
+             used.intervals <- interval.ranges[names(interval.ranges)%in%contdt[order(-Dim.1,-Dim.2)][70:370][,pos]]  
+             used.intervals.tot <- interval.ranges[names(interval.ranges)%in%models1[,interval]]
+value.vec.se.plot.dt <- nrow(as.data.table(super.enchancer.gr[subjectHits(findOverlaps(used.intervals, super.enchancer.gr))]))/300
+
+
+
+value.vec.se.plot.dt <- c(value.vec.se.plot.dt, nrow(as.data.table(super.enchancer.gr[subjectHits(findOverlaps(used.intervals.tot, super.enchancer.gr))]))/2128)
+plot(value.vec.se.plot.dt)
+df <- data.table(values=value.vec.se.plot.dt,names=c("SE in selected regions", "SE in total regions"))
+
+genomic.plots2 <- ggplot(data=df,aes(x=names,y=values,fill=names)) + geom_bar(stat = "identity") + scale_fill_viridis(discrete=T) + theme_minimal(base_size=20)  + theme(axis.text.x = element_blank()) + labs(fill="") + xlab("") + ylab("Number of super enhancers per Mb")#+ labs(title="Average number of SE hits per MB in regions")
+```
+#drivers
+```{r}
+str_extract(protein.coding.dt[,ID],"ENSG\\d+")
+protein.coding.dt[,ID:=str_extract(protein.coding.dt[,ID],"ENSG\\d+")]
+nonprotein.coding.dt[,ID:=str_extract(nonprotein.coding.dt[,ID],"ENSG\\d+")]
+
+mart.hs     <- useMart("ensembl", "hsapiens_gene_ensembl")
+
+
+
+listAttributes(mart.hs)
+listFilters(mart.hs)
+human = useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+protein.coding.genes <-as.data.table(getBM(attributes = c("ensembl_gene_id","start_position","end_position","chromosome_name","description"), 
+      filters = c("ensembl_gene_id"), 
+      values = str_extract(protein.coding.dt[tissue=="Skin-Melanoma",ID],"ENSG\\d+"), 
+      mart = human))
+
+nonprotein.coding.genes <- as.data.table(getBM(attributes = c("ensembl_gene_id","start_position","end_position","chromosome_name","description"), 
+      filters = c("ensembl_gene_id"), 
+      values = str_extract(nonprotein.coding.dt[tissue=="Skin-Melanoma",ID],"ENSG\\d+"), 
+      mart = human))
+
+
+
+protein.coding.genes[,chromosome_name:=paste0("chr",chromosome_name)]
+nonprotein.coding.genes[,chromosome_name:=paste0("chr",chromosome_name)]
+
+
+pc.genes.GR <- makeGRangesFromDataFrame(protein.coding.genes,start.field = "start_position",end.field = "end_position")
+                values(pc.genes.GR) <- protein.coding.genes[,"ensembl_gene_id"]
+                
+npc.genes.GR <- makeGRangesFromDataFrame(nonprotein.coding.genes,start.field = "start_position",end.field = "end_position")
+                values(npc.genes.GR) <- nonprotein.coding.genes[,"ensembl_gene_id"]
+
+
+             used.intervals <- interval.ranges[names(interval.ranges)%in%contdt[order(-Dim.1,-Dim.2)][70:369][,pos]]
+            
+            
+m1 <-   length(used.intervals[subjectHits(findOverlaps(pc.genes.GR,used.intervals))])
+
+m2 <- length(used.intervals[subjectHits(findOverlaps(npc.genes.GR,used.intervals))])
+
+used.intervals <- interval.ranges[names(interval.ranges)%in%contdt[order(-Dim.1,-Dim.2)][c(1:69 ,370:2128),][,pos]]
+   m3 <-    length(used.intervals[subjectHits(findOverlaps(pc.genes.GR,used.intervals))])
+      m4 <- length(used.intervals[subjectHits(findOverlaps(npc.genes.GR,used.intervals))])
+
+data.table( hits = c(length(findOverlaps(pc.genes.GR,used.intervals)),length(findOverlaps(npc.genes.GR,used.intervals)),overlap = c("Selected regionm vs protein coding", "Mutation profile PCA vs. non-protein coding","Predictor PCA vs. protein coding", "Predictor PCA vs. non protein coding")))
+fisher.test()
+ 
+fisher.test(matrix(c(m1,(200-m1),m3,(2128-200-m3)),2,2,byrow=T))
+fisher.test(matrix(c(m2,(200-m2),m4,(2128-200-m4)),2,2,byrow=T))
+fisher.test(matrix(c(m1+m2,(200-m1-m2),m3+m4,(2128-200-m3-m4)),2,2,byrow=T))
+
+
+fisher.test(matrix(c(17,(183),0,(2128-200)),2,2,byrow=T))
+```
+
